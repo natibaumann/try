@@ -1,5 +1,6 @@
-/* Mission board: lists the 3 mission types (spy / poster / fashion) and
-   hosts the poster mini-editor + fashion runway check UIs. */
+/* Mission board: a lightweight overlay (like the poster editor) rather than
+   a full screen, so opening it never tears down the 3D world underneath -
+   the player's position and the scene stay exactly as they were. */
 function completeMission(id) {
   const mission = GameState.data.missions[id];
   const def = MISSIONS[id];
@@ -13,20 +14,21 @@ function completeMission(id) {
 }
 
 const MissionsScreen = {
-  mount(root, params) {
-    this.back = params.back;
-    root.innerHTML = `
-      <div class="screen missions-screen">
+  open() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal missions-modal">
         <div class="panel-header">
           <h1>Mission Board</h1>
-          <button class="secondary-btn" id="close-missions">← Back</button>
+          <button class="secondary-btn" id="close-missions">Close</button>
         </div>
         <div class="mission-list" id="mission-list"></div>
       </div>`;
-    root.querySelector('#close-missions').addEventListener('click', () => {
-      if (this.back) Router.show(this.back); else Router.show(PlazaScreen);
-    });
-    this.list = root.querySelector('#mission-list');
+    document.body.appendChild(overlay);
+    this.overlay = overlay;
+    overlay.querySelector('#close-missions').addEventListener('click', () => overlay.remove());
+    this.list = overlay.querySelector('#mission-list');
     this.renderList();
   },
 
@@ -145,6 +147,4 @@ const MissionsScreen = {
       this.renderList();
     });
   },
-
-  destroy() {},
 };

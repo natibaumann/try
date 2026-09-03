@@ -1,13 +1,15 @@
 # Style Squad: Plaza Life
 
-A browser-based, 2000s-Bratz-inspired girls' dress-up & life-sim game. No build
-step, no external art assets — the avatar is a parametric SVG "paper doll" so
-skin tone, hairstyle/color, makeup, and outfits all render live from code.
+A browser-based, 2000s-Bratz-inspired girls' dress-up & life-sim game, rendered
+in real 3D with [three.js](https://threejs.org/) (vendored locally at
+`lib/three.min.js`, no CDN dependency). No external character/building
+assets — every character, building, and piece of furniture is procedural
+geometry generated in code, so there's nothing to download or author in a
+3D tool to get it running.
 
 ## Running it
 
-Just serve the folder statically and open it (ES-module-free, so any static
-server works):
+Just serve the folder statically and open it (classic scripts, no bundler):
 
 ```
 python3 -m http.server 8080
@@ -16,36 +18,52 @@ python3 -m http.server 8080
 
 Opening `index.html` directly via `file://` also works.
 
+**Controls:** arrow keys / WASD to walk, **E** (or tap the on-screen prompt)
+to enter a store/salon/mall/home when it lights up. In the Home/Office room
+builder: drag to orbit the camera, scroll to zoom, click a floor tile to
+place/remove furniture.
+
 ## Game flow
 
 1. **Character Customization** (`js/screens/customization.js`) — skin tone,
    eye color, hairstyle, hair color, makeup (lipstick/eyeshadow/blush +
-   intensity), starter outfit. "Enter the World" saves the character and
-   drops the player into the Plaza.
-2. **Plaza** (outside the mall) — a walkable top-down map
-   (`js/worldScreen.js` + `js/data/maps.js`) with standalone stores: Plaza
-   Shoes, Plaza Threads (clothes), Plaza Salon, Plaza Gems (jewelry), Plaza
-   Pets, Plaza Home Goods (furniture), plus the Mall Entrance, the player's
-   Home (apartment/office), and the Mission Board. Move with
-   arrow keys/WASD, walk onto a hotspot, press **E** (or tap it) to enter.
-3. **Mall interior** — a second walkable map with different-brand versions of
-   the same store categories (Glossy & Urban Edge for clothes, Sole Mates for
+   intensity), starter outfit, previewed live on a rotating 3D character
+   (`js/3d/preview.js`). "Enter the World" saves the character and drops the
+   player into the Plaza.
+2. **Plaza** (outside the mall) — a real 3D, walkable space
+   (`js/3d/world3d.js` + `js/3d/scenes.js`) with a personalized building per
+   store (Plaza Shoes, Plaza Threads, Plaza Salon, Plaza Gems, Plaza Pets,
+   Plaza Home Goods), a Grand Mall entrance, a house for the player's Home,
+   a fountain, benches, lamps, and trees, all lit with a directional
+   "sun" + hemisphere light, soft shadows, and distance fog. Movement uses
+   real acceleration/friction (not teleport-per-frame), the character turns
+   to face its direction of travel, and a smoothed third-person camera
+   follows behind.
+3. **Mall interior** — an enclosed 3D hall with ceiling lights, pillars, a
+   kiosk and food court, and storefront alcoves for different-brand versions
+   of the same categories (Glossy & Urban Edge for clothes, Sole Mates for
    shoes, Sparkle & Co for jewelry, Trendy Tails for pets, Chic Interiors for
    furniture). Entering/exiting the Mall and every store/salon/home door shows
-   a loading screen (`js/screens/loading.js`).
-4. **Stores** (`js/screens/store.js`) — one config-driven screen reused by
-   every shop; items are filtered by store id from the shared catalog
+   a loading screen (`js/screens/loading.js`). Leaving a store/salon/home
+   resumes the player at the same spot they entered from, rather than
+   resetting to the map's spawn point.
+4. **Stores** (`js/screens/store.js`) — a 2D catalog overlay (like the
+   shelf/rack menu in most 3D dress-up and life-sim games) reused by every
+   shop; items are filtered by store id from the shared catalog
    (`js/data/items.js`) so each brand carries different stock. Buying spends
-   cash; clothing/shoes/jewelry can also be equipped directly.
-5. **Salon** (`js/screens/salon.js`) — change hairstyle/color any time.
-6. **Home hub** (`js/screens/home.js`) — an Apartment and an Office, each a
-   5×4 grid the player decorates with furniture bought from either Home
-   Goods store; click a piece then a tile to place it, click a placed piece
-   to remove it.
-7. **Missions** (`js/screens/missions.js` + `js/data/missions.js`) — the
-   mission board offers three mini-games in the spirit of the "spying,
-   poster design, fashion design" brief:
-   - **Undercover Assignment** (spy): find 3 hidden clue hotspots scattered
+   cash; clothing/shoes/jewelry can also be equipped directly, which updates
+   the 3D character's materials immediately.
+5. **Salon** (`js/screens/salon.js`) — change hairstyle/color any time, with
+   the same live 3D preview as customization.
+6. **Home hub** (`js/screens/home.js`) — a real 3D Apartment and Office, each
+   a 5×4 room the player decorates by placing 3D furniture models bought from
+   either Home Goods store: select a piece, click a floor tile to place it
+   (raycast-picked), click a placed piece to remove it.
+7. **Missions** (`js/screens/missions.js` + `js/data/missions.js`) — a
+   lightweight overlay (doesn't tear down the 3D world underneath) offering
+   three mini-games in the spirit of the "spying, poster design, fashion
+   design" brief:
+   - **Undercover Assignment** (spy): find 3 hidden clue props scattered
      across the Plaza and Mall.
    - **Poster Perfect**: a tiny canvas-based poster editor (background
      color, sticker, headline text).
@@ -61,32 +79,41 @@ persists to `localStorage` so a reload resumes the same save.
 
 ```
 index.html
+lib/three.min.js     vendored three.js r148 (UMD build)
 css/style.css
 js/
-  state.js         save/load, cash, inventory
-  avatar.js         SVG paper-doll renderer
-  router.js         screen manager + loading-screen transitions
-  worldScreen.js    shared Plaza/Mall walkable-map logic
+  state.js            save/load, cash, inventory
+  router.js           screen manager + loading-screen transitions
   data/
-    items.js        outfits/shoes/jewelry/pets/furniture catalog + brands
-    maps.js          Plaza/Mall hotspot layouts + store metadata
-    missions.js      mission definitions
+    items.js          outfits/shoes/jewelry/pets/furniture catalog + brands
+    stores.js         store metadata (brand, category, which map to return to)
+    missions.js       mission definitions
+  3d/
+    character.js      procedural human-proportioned rig + walk-cycle animation
+    textures.js       canvas-generated signage/pavement/wall/floor textures
+    props.js          building/fountain/bench/lamp/storefront/furniture factories
+    scenes.js         builds the actual Plaza and Mall interior 3D scenes
+    world3d.js         movement physics, collision, chase camera, hotspot logic
+    preview.js        turntable 3D preview used by customization/salon
   screens/
     customization.js
     loading.js
     store.js
     salon.js
-    home.js
+    home.js            3D room builder (raycast tile placement)
     missions.js
 main.js
 ```
 
 ## Extending it
 
-- New stores: add an entry to `STORE_CATALOG` in `js/data/maps.js`, a
-  hotspot in the relevant map, and matching items in `ITEMS` (tag each with
-  the new `store` id).
+- New stores: add an entry to `STORE_CATALOG` in `js/data/stores.js`, a
+  building/storefront in `js/3d/scenes.js`, and matching items in `ITEMS`
+  (tag each with the new `store` id).
 - New furniture/rooms: extend `ITEMS.furniture` (`room: 'apartment' | 'office' | 'both'`)
-  — the Home screen picks it up automatically.
+  and add a shape case in `createFurnitureMesh` (`js/3d/props.js`) — the Home
+  screen picks it up automatically.
 - New missions: add a definition to `js/data/missions.js` and a `renderAction`
   case in `js/screens/missions.js` for its mini-game UI.
+- New hairstyles: add a case to `buildHair` in `js/3d/character.js` and a
+  matching entry in `ITEMS.hairStyles`.

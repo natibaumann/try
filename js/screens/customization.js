@@ -37,12 +37,12 @@ const CustomizationScreen = {
       Router.goto(PlazaScreen, {}, 1100);
     });
 
-    this.renderPreview();
+    this.previewWidget = createTurntablePreview(this.preview, this.appearance);
     this.renderBody();
   },
 
   renderPreview() {
-    this.preview.innerHTML = renderAvatarSVG(this.appearance, { fullBody: true });
+    if (this.previewWidget) this.previewWidget.updateAppearance(this.appearance);
   },
 
   swatchRow(colors, current, onPick) {
@@ -141,5 +141,7 @@ const CustomizationScreen = {
     this.renderBody();
   },
 
-  destroy() {},
+  destroy() {
+    if (this.previewWidget) this.previewWidget.destroy();
+  },
 };

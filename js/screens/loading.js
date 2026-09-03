@@ -12,7 +12,7 @@ const LoadingScreen = {
     const tip = tips[Math.floor(Math.random() * tips.length)];
     root.innerHTML = `
       <div class="screen loading-screen">
-        <div class="loading-avatar">${renderAvatarSVG(GameState.data.appearance, { fullBody: false })}</div>
+        <div class="loading-spinner"></div>
         <div class="loading-bar-track"><div class="loading-bar-fill"></div></div>
         <div class="loading-tip">${tip}</div>
       </div>`;

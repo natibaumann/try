@@ -44,11 +44,11 @@ const SalonScreen = {
       });
     });
 
-    this.renderPreview();
+    this.previewWidget = createTurntablePreview(this.preview, this.appearance);
   },
 
   renderPreview() {
-    this.preview.innerHTML = renderAvatarSVG(this.appearance, { fullBody: true });
+    if (this.previewWidget) this.previewWidget.updateAppearance(this.appearance);
   },
 
   refresh() {
@@ -58,5 +58,7 @@ const SalonScreen = {
     this.colors.querySelectorAll('.swatch').forEach((b) => b.classList.toggle('selected', b.dataset.color === this.appearance.hairColor));
   },
 
-  destroy() {},
+  destroy() {
+    if (this.previewWidget) this.previewWidget.destroy();
+  },
 };

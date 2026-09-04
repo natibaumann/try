@@ -10,8 +10,9 @@ function createBuilding({ width, height, depth, color, roofColor, label, icon })
   walls.receiveShadow = true;
   group.add(walls);
 
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(width, depth) * 0.75, height * 0.4, 4), new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.6 }));
-  roof.position.y = height + (height * 0.4) / 2;
+  const roofH = height * 0.6;
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(width, depth) * 0.6, roofH, 4), new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.6 }));
+  roof.position.y = height + roofH / 2;
   roof.rotation.y = Math.PI / 4;
   roof.castShadow = true;
   group.add(roof);
@@ -50,8 +51,9 @@ function createHouse({ label = 'Your Place' } = {}) {
   walls.castShadow = true; walls.receiveShadow = true;
   group.add(walls);
 
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(width * 0.8, height * 0.6, 4), new THREE.MeshStandardMaterial({ color: 0xc9536b, roughness: 0.6 }));
-  roof.position.y = height + (height * 0.6) / 2;
+  const roofH = height * 0.75;
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(width * 0.65, roofH, 4), new THREE.MeshStandardMaterial({ color: 0xc9536b, roughness: 0.6 }));
+  roof.position.y = height + roofH / 2;
   roof.rotation.y = Math.PI / 4;
   roof.castShadow = true;
   group.add(roof);

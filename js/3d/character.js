@@ -1,6 +1,15 @@
-/* Procedural, jointed humanoid built from primitives (no external model
-   assets exist in this project) using real human proportions (~7.5 heads
-   tall) so it can actually walk with a physical gait instead of sliding. */
+/* A properly rigged, skinned humanoid: a real THREE.Skeleton (16 bones,
+   T-pose bind), a single SkinnedMesh with linear-blend skin weights at the
+   knees/elbows (so those joints deform smoothly instead of showing a
+   "candy-wrapper" gap), and baked idle/walk THREE.AnimationClips played
+   through an AnimationMixer. This is deliberately built the way a real
+   rigged character (e.g. one exported from Mixamo/Blender) would be
+   consumed by the game, so swapping in a real modeled character later is
+   a drop-in replacement for this file rather than a rework of world3d.js
+   or preview.js. No external model assets exist in this project, so the
+   mesh itself is still procedural geometry (tube-lofted limb segments).
+
+   Human proportions target ~7.5 heads tall, matching the previous rig. */
 const CHAR = {
   headR: 0.115,
   neckH: 0.05,
@@ -22,17 +31,145 @@ CHAR.shoulderY = CHAR.hipY + CHAR.torsoH;
 CHAR.headY = CHAR.shoulderY + CHAR.neckH + CHAR.headR;
 CHAR.height = CHAR.headY + CHAR.headR;
 
-function limbMesh(length, radius, material) {
-  const geo = typeof THREE.CapsuleGeometry === 'function'
-    ? new THREE.CapsuleGeometry(radius, Math.max(length - radius * 2, 0.01), 4, 8)
-    : new THREE.CylinderGeometry(radius, radius, length, 8);
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.position.y = -length / 2;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
+/* ---------- Skeleton (T-pose bind) ---------- */
+function buildSkeleton() {
+  const bones = {};
+  function bone(name, x, y, z, parent) {
+    const b = new THREE.Bone();
+    b.name = name;
+    b.position.set(x, y, z);
+    if (parent) parent.add(b);
+    bones[name] = b;
+    return b;
+  }
+
+  bone('hips', 0, CHAR.hipY, 0, null);
+  bone('spine', 0, CHAR.torsoH, 0, bones.hips);
+  bone('neck', 0, CHAR.neckH, 0, bones.spine);
+  bone('head', 0, CHAR.headR, 0, bones.neck);
+
+  bone('lShoulder', -CHAR.shoulderW / 2, 0, 0, bones.spine);
+  bone('lElbow', -CHAR.upperArmL, 0, 0, bones.lShoulder);
+  bone('lHand', -CHAR.lowerArmL, 0, 0, bones.lElbow);
+  bone('rShoulder', CHAR.shoulderW / 2, 0, 0, bones.spine);
+  bone('rElbow', CHAR.upperArmL, 0, 0, bones.rShoulder);
+  bone('rHand', CHAR.lowerArmL, 0, 0, bones.rElbow);
+
+  bone('lHip', -CHAR.hipW / 2, 0, 0, bones.hips);
+  bone('lKnee', 0, -CHAR.upperLegL, 0, bones.lHip);
+  bone('lFoot', 0, -CHAR.lowerLegL, 0, bones.lKnee);
+  bone('rHip', CHAR.hipW / 2, 0, 0, bones.hips);
+  bone('rKnee', 0, -CHAR.upperLegL, 0, bones.rHip);
+  bone('rFoot', 0, -CHAR.lowerLegL, 0, bones.rKnee);
+
+  const order = ['hips', 'spine', 'neck', 'head', 'lShoulder', 'lElbow', 'lHand',
+    'rShoulder', 'rElbow', 'rHand', 'lHip', 'lKnee', 'lFoot', 'rHip', 'rKnee', 'rFoot'];
+  const list = order.map((n) => bones[n]);
+  bones.hips.updateWorldMatrix(true, true);
+  const indexOf = {};
+  order.forEach((n, i) => { indexOf[n] = i; });
+  return { bones, list, indexOf };
 }
 
+/* ---------- Tube-lofted limb mesh with linear-blend skin weights ---------- */
+function buildTube(startBone, endBone, indexOf, radiusTop, radiusBottom, blendToChild) {
+  const start = startBone.getWorldPosition(new THREE.Vector3());
+  const end = endBone.getWorldPosition(new THREE.Vector3());
+  const dir = new THREE.Vector3().subVectors(end, start);
+  const length = dir.length();
+  dir.normalize();
+  const ref = Math.abs(dir.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+  const perp1 = new THREE.Vector3().crossVectors(ref, dir).normalize();
+  const perp2 = new THREE.Vector3().crossVectors(dir, perp1).normalize();
+
+  const radialSegments = 8;
+  const rings = 5;
+  const ownIdx = indexOf[startBone.name];
+  const childIdx = indexOf[endBone.name];
+
+  const positions = [], normals = [], skinIndices = [], skinWeights = [];
+  for (let r = 0; r < rings; r++) {
+    const t = r / (rings - 1);
+    const radius = THREE.MathUtils.lerp(radiusTop, radiusBottom, t);
+    const center = new THREE.Vector3().copy(start).addScaledVector(dir, length * t);
+    const childWeight = blendToChild ? t * blendToChild : 0;
+    for (let s = 0; s < radialSegments; s++) {
+      const angle = (s / radialSegments) * Math.PI * 2;
+      const radial = new THREE.Vector3()
+        .addScaledVector(perp1, Math.cos(angle))
+        .addScaledVector(perp2, Math.sin(angle));
+      const pos = new THREE.Vector3().copy(center).addScaledVector(radial, radius);
+      positions.push(pos.x, pos.y, pos.z);
+      normals.push(radial.x, radial.y, radial.z);
+      skinIndices.push(ownIdx, childIdx, 0, 0);
+      skinWeights.push(1 - childWeight, childWeight, 0, 0);
+    }
+  }
+
+  const indices = [];
+  for (let r = 0; r < rings - 1; r++) {
+    for (let s = 0; s < radialSegments; s++) {
+      const a = r * radialSegments + s;
+      const b = r * radialSegments + ((s + 1) % radialSegments);
+      const c = (r + 1) * radialSegments + s;
+      const d = (r + 1) * radialSegments + ((s + 1) % radialSegments);
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  return { positions, normals, skinIndices, skinWeights, indices, vertexCount: rings * radialSegments };
+}
+
+function buildSkinnedBody(skeleton) {
+  const b = skeleton.bones;
+  const segments = [
+    { start: b.hips, end: b.spine, rTop: CHAR.torsoW * 0.42, rBot: CHAR.torsoW * 0.48, mat: 'outfit', blend: 0 },
+    { start: b.spine, end: b.neck, rTop: CHAR.headR * 0.4, rBot: CHAR.headR * 0.45, mat: 'skin', blend: 0 },
+    { start: b.lShoulder, end: b.lElbow, rTop: CHAR.limbR * 0.8, rBot: CHAR.limbR * 0.72, mat: 'skin', blend: 0.4 },
+    { start: b.lElbow, end: b.lHand, rTop: CHAR.limbR * 0.68, rBot: CHAR.limbR * 0.55, mat: 'skin', blend: 0 },
+    { start: b.rShoulder, end: b.rElbow, rTop: CHAR.limbR * 0.8, rBot: CHAR.limbR * 0.72, mat: 'skin', blend: 0.4 },
+    { start: b.rElbow, end: b.rHand, rTop: CHAR.limbR * 0.68, rBot: CHAR.limbR * 0.55, mat: 'skin', blend: 0 },
+    { start: b.lHip, end: b.lKnee, rTop: CHAR.limbR * 1.15, rBot: CHAR.limbR, mat: 'outfit', blend: 0.4 },
+    { start: b.lKnee, end: b.lFoot, rTop: CHAR.limbR * 0.9, rBot: CHAR.limbR * 0.7, mat: 'skin', blend: 0 },
+    { start: b.rHip, end: b.rKnee, rTop: CHAR.limbR * 1.15, rBot: CHAR.limbR, mat: 'outfit', blend: 0.4 },
+    { start: b.rKnee, end: b.rFoot, rTop: CHAR.limbR * 0.9, rBot: CHAR.limbR * 0.7, mat: 'skin', blend: 0 },
+  ];
+
+  const positions = [], normals = [], skinIndices = [], skinWeights = [], indices = [];
+  const groups = [];
+  let vertOffset = 0, indexOffset = 0;
+  segments.forEach((seg) => {
+    const tube = buildTube(seg.start, seg.end, skeleton.indexOf, seg.rTop, seg.rBot, seg.blend);
+    positions.push(...tube.positions);
+    normals.push(...tube.normals);
+    skinIndices.push(...tube.skinIndices);
+    skinWeights.push(...tube.skinWeights);
+    tube.indices.forEach((i) => indices.push(i + vertOffset));
+    groups.push({ start: indexOffset, count: tube.indices.length, materialIndex: seg.mat === 'outfit' ? 0 : 1 });
+    vertOffset += tube.vertexCount;
+    indexOffset += tube.indices.length;
+  });
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+  geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+  geo.setIndex(indices);
+  groups.forEach((g) => geo.addGroup(g.start, g.count, g.materialIndex));
+
+  const outfitMat = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.02 });
+  const skinMat = new THREE.MeshStandardMaterial({ roughness: 0.65, metalness: 0.02 });
+  const mesh = new THREE.SkinnedMesh(geo, [outfitMat, skinMat]);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  const threeSkeleton = new THREE.Skeleton(skeleton.list);
+  mesh.add(skeleton.bones.hips);
+  mesh.bind(threeSkeleton);
+  return { mesh, outfitMat, skinMat };
+}
+
+/* ---------- Hair (rigid attachment on the head bone) ---------- */
 function buildHair(style, color) {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05 });
@@ -88,123 +225,162 @@ function buildHair(style, color) {
   return group;
 }
 
+/* ---------- Baked animation clips ---------- */
+function quatX(angle) {
+  return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), angle);
+}
+function quatZ(angle) {
+  return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), angle);
+}
+
+/* The skeleton binds in a T-pose (arms out along local +/-X), which is the
+   standard rig convention, but every actual pose needs the arms lowered to
+   the sides first. Composing swing*rest (swing applied on the outside)
+   keeps the forward/back swing measured around the true parent X axis
+   regardless of that rest rotation - see the walk-cycle debugging notes in
+   the project history for why the naive rest*swing order doesn't work. */
+const L_SHOULDER_REST = quatZ(Math.PI / 2);
+const R_SHOULDER_REST = quatZ(-Math.PI / 2);
+function armQuat(swingAngle, restQuat) {
+  return new THREE.Quaternion().multiplyQuaternions(quatX(swingAngle), restQuat);
+}
+
+function sampleWalkPose(phase) {
+  const swing = Math.sin(phase) * 0.55;
+  const swingOpp = Math.sin(phase + Math.PI) * 0.55;
+  const lKnee = Math.max(0, -Math.sin(phase + Math.PI * 0.5)) * 0.9;
+  const rKnee = Math.max(0, -Math.sin(phase + Math.PI * 1.5)) * 0.9;
+  const bob = Math.abs(Math.sin(phase)) * 0.035;
+  const lean = 0.06 * Math.sin(phase * 2);
+  return { lHip: swing, rHip: swingOpp, lKnee, rKnee, lShoulder: swingOpp * 0.7, rShoulder: swing * 0.7, bob, lean };
+}
+
+function buildWalkClip() {
+  const steps = 16;
+  const duration = 1.0;
+  const times = [];
+  const tracks = { lHip: [], rHip: [], lKnee: [], rKnee: [], lShoulder: [], rShoulder: [], spine: [], hipsY: [] };
+  /* steps+1 samples so the last keyframe (phase 2*PI) exactly repeats the
+     first (phase 0) - otherwise LoopRepeat pops at the wrap point since it
+     doesn't interpolate past the final defined keyframe. */
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * duration;
+    const phase = (i / steps) * Math.PI * 2;
+    times.push(t);
+    const p = sampleWalkPose(phase);
+    tracks.lHip.push(...quatX(p.lHip).toArray());
+    tracks.rHip.push(...quatX(p.rHip).toArray());
+    tracks.lKnee.push(...quatX(-p.lKnee).toArray());
+    tracks.rKnee.push(...quatX(-p.rKnee).toArray());
+    tracks.lShoulder.push(...armQuat(p.lShoulder, L_SHOULDER_REST).toArray());
+    tracks.rShoulder.push(...armQuat(p.rShoulder, R_SHOULDER_REST).toArray());
+    tracks.spine.push(...quatX(p.lean).toArray());
+    tracks.hipsY.push(CHAR.hipY - p.bob);
+  }
+  const clipTracks = [
+    new THREE.QuaternionKeyframeTrack('lHip.quaternion', times, tracks.lHip),
+    new THREE.QuaternionKeyframeTrack('rHip.quaternion', times, tracks.rHip),
+    new THREE.QuaternionKeyframeTrack('lKnee.quaternion', times, tracks.lKnee),
+    new THREE.QuaternionKeyframeTrack('rKnee.quaternion', times, tracks.rKnee),
+    new THREE.QuaternionKeyframeTrack('lShoulder.quaternion', times, tracks.lShoulder),
+    new THREE.QuaternionKeyframeTrack('rShoulder.quaternion', times, tracks.rShoulder),
+    new THREE.QuaternionKeyframeTrack('spine.quaternion', times, tracks.spine),
+    new THREE.NumberKeyframeTrack('hips.position[y]', times, tracks.hipsY),
+  ];
+  return new THREE.AnimationClip('walk', duration, clipTracks);
+}
+
+function buildIdleClip() {
+  const duration = 2.4;
+  const times = [0, duration / 2, duration];
+  const lRest = armQuat(0, L_SHOULDER_REST).toArray();
+  const rRest = armQuat(0, R_SHOULDER_REST).toArray();
+  return new THREE.AnimationClip('idle', duration, [
+    new THREE.VectorKeyframeTrack('spine.scale', times, [1, 1, 1, 1, 1.018, 1, 1, 1, 1]),
+    new THREE.NumberKeyframeTrack('hips.position[y]', times, [CHAR.hipY, CHAR.hipY - 0.006, CHAR.hipY]),
+    new THREE.QuaternionKeyframeTrack('lShoulder.quaternion', times, [...lRest, ...lRest, ...lRest]),
+    new THREE.QuaternionKeyframeTrack('rShoulder.quaternion', times, [...rRest, ...rRest, ...rRest]),
+  ]);
+}
+
+/* ---------- Public character assembly ---------- */
 function createCharacter(appearance) {
   const root = new THREE.Group();
+  const skeleton = buildSkeleton();
+  const b = skeleton.bones;
+  const { mesh: bodyMesh, outfitMat, skinMat } = buildSkinnedBody(skeleton);
+  root.add(bodyMesh);
 
-  const skinMat = new THREE.MeshStandardMaterial({ roughness: 0.65, metalness: 0.02 });
-  const outfitMat = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.02 });
-  const shoeMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.05 });
   const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.3 });
   const lipMat = new THREE.MeshStandardMaterial({ roughness: 0.4 });
   const blushMat = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.5, roughness: 0.8 });
-  const shadowMat = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.5, roughness: 0.8 });
+  const shoeMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.05 });
+  const R = CHAR.headR;
 
-  const pelvis = new THREE.Group();
-  pelvis.position.y = CHAR.hipY;
-  root.add(pelvis);
-
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(CHAR.torsoW, CHAR.torsoH, CHAR.torsoD, 1, 2, 1), outfitMat);
-  torso.position.y = CHAR.torsoH / 2;
-  torso.castShadow = true;
-  torso.receiveShadow = true;
-  pelvis.add(torso);
-
-  function makeLeg(side) {
-    const hip = new THREE.Group();
-    hip.position.set(side * CHAR.hipW * 0.5, 0, 0);
-    const upper = limbMesh(CHAR.upperLegL, CHAR.limbR, outfitMat);
-    hip.add(upper);
-    const knee = new THREE.Group();
-    knee.position.y = -CHAR.upperLegL;
-    hip.add(knee);
-    const lower = limbMesh(CHAR.lowerLegL, CHAR.limbR * 0.85, skinMat);
-    knee.add(lower);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(CHAR.limbR * 1.8, CHAR.limbR * 1.1, CHAR.footL), shoeMat);
-    foot.position.set(0, -CHAR.lowerLegL, CHAR.footL * 0.28);
-    foot.castShadow = true;
-    knee.add(foot);
-    pelvis.add(hip);
-    return { hip, knee, upperMesh: upper, lowerMesh: lower, footMesh: foot };
-  }
-
-  function makeArm(side) {
-    const shoulder = new THREE.Group();
-    shoulder.position.set(side * CHAR.shoulderW * 0.5, CHAR.torsoH, 0);
-    const upper = limbMesh(CHAR.upperArmL, CHAR.limbR * 0.75, skinMat);
-    shoulder.add(upper);
-    const elbow = new THREE.Group();
-    elbow.position.y = -CHAR.upperArmL;
-    shoulder.add(elbow);
-    const lower = limbMesh(CHAR.lowerArmL, CHAR.limbR * 0.65, skinMat);
-    elbow.add(lower);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(CHAR.limbR * 0.7, 8, 8), skinMat);
-    hand.position.y = -CHAR.lowerArmL;
-    hand.castShadow = true;
-    elbow.add(hand);
-    pelvis.add(shoulder);
-    return { shoulder, elbow, upperMesh: upper };
-  }
-
-  const leftLeg = makeLeg(-1);
-  const rightLeg = makeLeg(1);
-  const leftArm = makeArm(-1);
-  const rightArm = makeArm(1);
-
-  const headGroup = new THREE.Group();
-  headGroup.position.y = CHAR.torsoH + CHAR.neckH;
-  pelvis.add(headGroup);
-
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(CHAR.headR * 0.4, CHAR.headR * 0.45, CHAR.neckH * 2, 8), skinMat);
-  neck.position.y = -CHAR.neckH * 0.3;
-  headGroup.add(neck);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(CHAR.headR, 20, 16), skinMat);
-  head.position.y = CHAR.headR;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(R, 20, 16), skinMat);
   head.castShadow = true;
-  headGroup.add(head);
+  b.head.add(head);
 
-  const eyeGeo = new THREE.SphereGeometry(CHAR.headR * 0.09, 8, 8);
+  const eyeGeo = new THREE.SphereGeometry(R * 0.09, 8, 8);
   const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-  leftEye.position.set(-CHAR.headR * 0.38, CHAR.headR * 1.05, CHAR.headR * 0.88);
+  leftEye.position.set(-R * 0.38, R * 0.05, R * 0.88);
   const rightEye = leftEye.clone();
   rightEye.position.x *= -1;
-  headGroup.add(leftEye, rightEye);
+  b.head.add(leftEye, rightEye);
 
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(CHAR.headR * 0.5, CHAR.headR * 0.1, CHAR.headR * 0.08), lipMat);
-  mouth.position.set(0, CHAR.headR * 0.62, CHAR.headR * 0.96);
-  headGroup.add(mouth);
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(R * 0.5, R * 0.1, R * 0.08), lipMat);
+  mouth.position.set(0, -R * 0.38, R * 0.96);
+  b.head.add(mouth);
 
-  const blushGeo = new THREE.CircleGeometry(CHAR.headR * 0.22, 12);
+  const blushGeo = new THREE.CircleGeometry(R * 0.22, 12);
   const leftBlush = new THREE.Mesh(blushGeo, blushMat);
-  leftBlush.position.set(-CHAR.headR * 0.62, CHAR.headR * 0.78, CHAR.headR * 0.78);
+  leftBlush.position.set(-R * 0.62, -R * 0.22, R * 0.78);
   leftBlush.rotation.y = 0.5;
   const rightBlush = leftBlush.clone();
   rightBlush.position.x *= -1;
   rightBlush.rotation.y = -0.5;
-  headGroup.add(leftBlush, rightBlush);
+  b.head.add(leftBlush, rightBlush);
 
-  const shadowGeo = new THREE.PlaneGeometry(CHAR.headR * 0.55, CHAR.headR * 0.22);
-  const leftShadow = new THREE.Mesh(shadowGeo, shadowMat);
-  leftShadow.position.set(-CHAR.headR * 0.38, CHAR.headR * 1.22, CHAR.headR * 0.85);
+  const shadowGeo = new THREE.PlaneGeometry(R * 0.55, R * 0.22);
+  const leftShadow = new THREE.Mesh(shadowGeo, new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.5, roughness: 0.8 }));
+  leftShadow.position.set(-R * 0.38, R * 0.22, R * 0.85);
   const rightShadow = leftShadow.clone();
   rightShadow.position.x *= -1;
-  headGroup.add(leftShadow, rightShadow);
+  b.head.add(leftShadow, rightShadow);
 
-  const hair = buildHair(appearance.hairStyle, appearance.hairColor);
-  hair.position.copy(head.position);
-  headGroup.add(hair);
+  let hair = buildHair(appearance.hairStyle, appearance.hairColor);
+  hair.userData.style = appearance.hairStyle;
+  b.head.add(hair);
 
-  const necklace = new THREE.Mesh(new THREE.TorusGeometry(CHAR.headR * 0.55, CHAR.headR * 0.06, 8, 16, Math.PI), new THREE.MeshStandardMaterial({ metalness: 0.7, roughness: 0.25 }));
-  necklace.position.set(0, CHAR.torsoH + CHAR.neckH * 0.4, CHAR.torsoD * 0.5);
+  const handGeo = new THREE.SphereGeometry(CHAR.limbR * 0.55, 8, 8);
+  const leftHand = new THREE.Mesh(handGeo, skinMat);
+  const rightHand = new THREE.Mesh(handGeo, skinMat);
+  leftHand.castShadow = rightHand.castShadow = true;
+  b.lHand.add(leftHand);
+  b.rHand.add(rightHand);
+
+  const footGeo = new THREE.BoxGeometry(CHAR.limbR * 1.8, CHAR.limbR * 1.1, CHAR.footL);
+  const leftFoot = new THREE.Mesh(footGeo, shoeMat);
+  const rightFoot = new THREE.Mesh(footGeo, shoeMat);
+  leftFoot.position.z = rightFoot.position.z = CHAR.footL * 0.28;
+  leftFoot.castShadow = rightFoot.castShadow = true;
+  b.lFoot.add(leftFoot);
+  b.rFoot.add(rightFoot);
+
+  const necklace = new THREE.Mesh(new THREE.TorusGeometry(R * 0.55, R * 0.06, 8, 16, Math.PI), new THREE.MeshStandardMaterial({ metalness: 0.7, roughness: 0.25 }));
+  necklace.position.set(0, CHAR.neckH * 0.4, CHAR.torsoD * 0.5);
   necklace.rotation.x = Math.PI * 0.55;
-  pelvis.add(necklace);
   necklace.visible = false;
+  b.spine.add(necklace);
+
+  const mixer = new THREE.AnimationMixer(bodyMesh);
+  const idleAction = mixer.clipAction(buildIdleClip());
+  const walkAction = mixer.clipAction(buildWalkClip());
+  idleAction.play();
 
   const character = {
-    root, pelvis, torso, headGroup, hair, leftLeg, rightLeg, leftArm, rightArm, necklace,
-    mats: { skinMat, outfitMat, shoeMat, lipMat, blushMat, eyeshadow: { leftShadow, rightShadow } },
-    walkPhase: 0,
-    facing: 0,
+    root, bones: b, mixer, idleAction, walkAction,
+    _wasMoving: false,
 
     applyAppearance(a) {
       skinMat.color.set(a.skinTone);
@@ -224,43 +400,27 @@ function createCharacter(appearance) {
         necklace.visible = false;
       }
       if (hair.userData.style !== a.hairStyle) {
-        headGroup.remove(hair);
-        const newHair = buildHair(a.hairStyle, a.hairColor);
-        newHair.userData.style = a.hairStyle;
-        newHair.position.copy(head.position);
-        headGroup.add(newHair);
-        character.hair = newHair;
+        b.head.remove(hair);
+        hair = buildHair(a.hairStyle, a.hairColor);
+        hair.userData.style = a.hairStyle;
+        b.head.add(hair);
       } else {
-        character.hair.userData.material.color.set(a.hairColor);
+        hair.userData.material.color.set(a.hairColor);
       }
-      character.hair.userData.style = a.hairStyle;
     },
 
-    /* distanceMoved drives the gait so animation speed always matches
-       actual travel speed instead of drifting with frame rate. */
     animate(dt, distanceMoved, moving) {
-      const strideRate = 5.5;
-      if (moving) this.walkPhase += distanceMoved * strideRate;
-      const target = moving ? 1 : 0;
-      this._blend = THREE.MathUtils.lerp(this._blend || 0, target, Math.min(1, dt * 8));
-      const blend = this._blend;
-      const swing = Math.sin(this.walkPhase) * 0.55 * blend;
-      const swingOpp = Math.sin(this.walkPhase + Math.PI) * 0.55 * blend;
-      this.leftLeg.hip.rotation.x = swing;
-      this.rightLeg.hip.rotation.x = swingOpp;
-      this.leftLeg.knee.rotation.x = Math.max(0, -Math.sin(this.walkPhase + Math.PI * 0.5)) * 0.9 * blend;
-      this.rightLeg.knee.rotation.x = Math.max(0, -Math.sin(this.walkPhase + Math.PI * 1.5)) * 0.9 * blend;
-      this.leftArm.shoulder.rotation.x = swingOpp * 0.7;
-      this.rightArm.shoulder.rotation.x = swing * 0.7;
-      const bob = Math.abs(Math.sin(this.walkPhase)) * 0.035 * blend;
-      this.pelvis.position.y = CHAR.hipY - bob;
-      this.torso.rotation.x = 0.06 * blend * Math.sin(this.walkPhase * 2);
-      if (!moving) {
-        const idle = Math.sin(performance.now() * 0.0015) * 0.015;
-        this.torso.scale.set(1, 1 + idle, 1);
-      } else {
-        this.torso.scale.set(1, 1, 1);
+      if (moving !== this._wasMoving) {
+        (moving ? this.walkAction : this.idleAction).reset().play();
+        (moving ? this.idleAction : this.walkAction).stop();
+        this._wasMoving = moving;
       }
+      if (moving) {
+        const strideRate = 5.5;
+        const speed = dt > 0 ? distanceMoved / dt : 0;
+        this.walkAction.timeScale = Math.max(0.4, (speed * strideRate) / (Math.PI * 2));
+      }
+      this.mixer.update(dt);
     },
   };
 

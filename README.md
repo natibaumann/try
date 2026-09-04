@@ -7,6 +7,17 @@ assets — every character, building, and piece of furniture is procedural
 geometry generated in code, so there's nothing to download or author in a
 3D tool to get it running.
 
+The character (`js/3d/character.js`) is a genuinely rigged and skinned
+humanoid, not a stack of rigid parts: a real `THREE.Skeleton` (16 bones,
+T-pose bind, matching Mixamo/Blender export conventions) with linear-blend
+skin weights at the knees and elbows so those joints deform smoothly, and
+`idle`/`walk` `THREE.AnimationClip`s played through an `AnimationMixer` — the
+same architecture a real modeled-and-rigged character (e.g. exported from
+Blender or Mixamo) would need. Swapping in such a model later means
+replacing this file's mesh/skeleton construction, not reworking `world3d.js`
+or `preview.js`, which only ever touch `character.root`, `.applyAppearance()`,
+and `.animate()`.
+
 ## Running it
 
 Just serve the folder statically and open it (classic scripts, no bundler):

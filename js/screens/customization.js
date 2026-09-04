@@ -5,7 +5,7 @@ const CustomizationScreen = {
     this.tab = 'face';
     root.innerHTML = `
       <div class="screen customization-screen">
-        <h1 class="game-title">Bratz Style Studio</h1>
+        <h1 class="game-title">Style Squad Studio</h1>
         <div class="customization-layout">
           <div class="avatar-preview" id="cust-preview"></div>
           <div class="customization-panel">

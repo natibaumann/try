@@ -62,35 +62,44 @@ function buildPlazaScene() {
   const colliders = [];
   const clueProps = [];
 
+  /* Alternating z-depth (not one flat row) plus a slight inward angle on
+     the two outermost buildings gives the street a layered, surrounding-
+     courtyard feel instead of a single flat wall of shops. */
   const storeSpecs = [
-    { id: 'plaza_pets', x: -24, color: 0x6fae5c, roof: 0x3f7a34, label: 'Plaza Pets', icon: '🐾', target: 'plaza_pets' },
-    { id: 'plaza_shoes', x: -16, color: 0xd9556b, roof: 0x8a2f3f, label: 'Plaza Shoes', icon: '👠', target: 'plaza_shoes' },
-    { id: 'plaza_clothes', x: -8, color: 0x4a72b0, roof: 0x2a4a7a, label: 'Plaza Threads', icon: '👗', target: 'plaza_clothes' },
-    { id: 'plaza_salon', x: 8, color: 0xe0a04f, roof: 0xa06a2a, label: 'Plaza Salon', icon: '💇', target: null },
-    { id: 'plaza_jewelry', x: 16, color: 0x6fc2c9, roof: 0x2f7a80, label: 'Plaza Gems', icon: '💎', target: 'plaza_jewelry' },
-    { id: 'plaza_furniture', x: 24, color: 0xb98a5a, roof: 0x7a5530, label: 'Plaza Home Goods', icon: '🛋️', target: 'plaza_furniture' },
+    { id: 'plaza_pets', x: -25, z: -10.5, rot: 0.26, color: 0x6fae5c, roof: 0x3f7a34, label: 'Plaza Pets', icon: '🐾', target: 'plaza_pets' },
+    { id: 'plaza_shoes', x: -16.5, z: -12.5, rot: 0, color: 0xd9556b, roof: 0x8a2f3f, label: 'Plaza Shoes', icon: '👠', target: 'plaza_shoes' },
+    { id: 'plaza_clothes', x: -8, z: -11, rot: 0, color: 0x4a72b0, roof: 0x2a4a7a, label: 'Plaza Threads', icon: '👗', target: 'plaza_clothes' },
+    { id: 'plaza_salon', x: 8, z: -11, rot: 0, color: 0xe0a04f, roof: 0xa06a2a, label: 'Plaza Salon', icon: '💇', target: null },
+    { id: 'plaza_jewelry', x: 16.5, z: -12.5, rot: 0, color: 0x6fc2c9, roof: 0x2f7a80, label: 'Plaza Gems', icon: '💎', target: 'plaza_jewelry' },
+    { id: 'plaza_furniture', x: 25, z: -10.5, rot: -0.26, color: 0xb98a5a, roof: 0x7a5530, label: 'Plaza Home Goods', icon: '🛋️', target: 'plaza_furniture' },
   ];
 
   storeSpecs.forEach((s) => {
-    const b = createBuilding({ width: 6.4, height: 4.2, depth: 5.5, color: s.color, roofColor: s.roof, label: s.label, icon: s.icon });
-    b.position.set(s.x, 0, -12);
+    const b = createBuilding({ width: 6.4, height: 4.4, depth: 5.5, color: s.color, roofColor: s.roof, label: s.label, icon: s.icon });
+    b.position.set(s.x, 0, s.z);
+    b.rotation.y = s.rot;
     scene.add(b);
+    const plant = createFurnitureMesh({ icon: 'plant', color: 0x4fae5c });
+    plant.position.set(s.x - 2.6, 0, s.z + 3.4);
+    scene.add(plant);
     const action = s.id === 'plaza_salon' ? { type: 'salon' } : { type: 'store', target: s.target };
     addHotspot(hotspots, colliders, b, s.id, s.label, action);
   });
 
-  const mall = createBuilding({ width: 12, height: 6, depth: 7, color: 0xa04fd9, roofColor: 0x6a2f8a, label: 'Grand Mall', icon: '🏬' });
-  mall.position.set(0, 0, -12);
+  const mall = createBuilding({ width: 13, height: 7, depth: 7.5, color: 0xa04fd9, roofColor: 0x6a2f8a, label: 'Grand Mall', icon: '🏬' });
+  mall.position.set(0, 0, -13);
   scene.add(mall);
   addHotspot(hotspots, colliders, mall, 'mall_entrance', 'Mall Entrance', { type: 'goto', target: 'mall' });
 
   const house = createHouse({ label: 'Your Place' });
-  house.position.set(-14, 0, 4);
+  house.position.set(-15, 0, 3);
+  house.rotation.y = 0.18;
   scene.add(house);
   addHotspot(hotspots, colliders, house, 'home', 'Your Place', { type: 'home' });
 
   const board = createBulletinBoard();
-  board.position.set(14, 0, 4);
+  board.position.set(15, 0, 3);
+  board.rotation.y = -0.18;
   scene.add(board);
   addHotspot(hotspots, colliders, board, 'missions', 'Mission Board', { type: 'missions' });
 
@@ -100,16 +109,27 @@ function buildPlazaScene() {
   colliders.push({ x: 0, z: 2, w: 4.8, d: 4.8 });
   clueProps.push({ id: 'clue_fountain', label: 'Fountain', position: { x: 0, z: 2 }, radius: 3.2 });
 
-  [-20, -12, 12, 20].forEach((x) => {
+  const plazaInlay = new THREE.Mesh(new THREE.CircleGeometry(8, 32), new THREE.MeshStandardMaterial({ color: 0xead9c2, roughness: 0.9 }));
+  plazaInlay.rotation.x = -Math.PI / 2;
+  plazaInlay.position.set(0, 0.005, 2);
+  plazaInlay.receiveShadow = true;
+  scene.add(plazaInlay);
+
+  [-21, -12.5, -4, 4, 12.5, 21].forEach((x) => {
     const lamp = createLamp();
-    lamp.position.set(x, 0, -3);
+    lamp.position.set(x, 0, -4);
     scene.add(lamp);
   });
-  [[-6, 6], [6, 6], [-6, -1], [6, -1]].forEach(([x, z]) => {
+  [[-6, 6], [6, 6], [-9, -2], [9, -2]].forEach(([x, z]) => {
     const bench = createBench();
     bench.position.set(x, 0, z);
     bench.rotation.y = z < 2 ? Math.PI : 0;
     scene.add(bench);
+  });
+  [[-4, 8.5], [4, 8.5], [-18, 6], [18, 6]].forEach(([x, z]) => {
+    const plant = createFurnitureMesh({ icon: 'plant', color: 0x4fae5c });
+    plant.position.set(x, 0, z);
+    scene.add(plant);
   });
 
   for (let i = 0; i < 40; i++) {
@@ -179,6 +199,27 @@ function buildMallScene() {
   ceiling.rotation.x = Math.PI / 2;
   ceiling.position.y = hallH;
   scene.add(ceiling);
+
+  /* A decorative (non-walkable) upper mezzanine along the back wall - a
+     second visible level so the hall reads as more than one flat box. */
+  const mezzMat = new THREE.MeshStandardMaterial({ color: 0xf3ecf7, roughness: 0.85 });
+  const mezzFloor = new THREE.Mesh(new THREE.BoxGeometry(hallW * 0.7, 0.25, 2.2), mezzMat);
+  mezzFloor.position.set(0, hallH * 0.62, -hallD / 2 + 1.3);
+  mezzFloor.castShadow = true; mezzFloor.receiveShadow = true;
+  scene.add(mezzFloor);
+  for (let x = -hallW * 0.34; x <= hallW * 0.34; x += 1.6) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 8), new THREE.MeshStandardMaterial({ color: 0x2a2a2a }));
+    post.position.set(x, hallH * 0.62 + 0.52, -hallD / 2 + 2.35);
+    scene.add(post);
+  }
+  const mezzRail = new THREE.Mesh(new THREE.BoxGeometry(hallW * 0.7, 0.06, 0.06), new THREE.MeshStandardMaterial({ color: 0x2a2a2a }));
+  mezzRail.position.set(0, hallH * 0.62 + 0.9, -hallD / 2 + 2.35);
+  scene.add(mezzRail);
+  [-hallW * 0.22, hallW * 0.22].forEach((x) => {
+    const mezzWindow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, hallH * 0.3), new THREE.MeshStandardMaterial({ color: 0xdff3ff, emissive: 0xaad9ff, emissiveIntensity: 0.3 }));
+    mezzWindow.position.set(x, hallH * 0.8, -hallD / 2 + 0.22);
+    scene.add(mezzWindow);
+  });
 
   const hotspots = [];
   const colliders = [];

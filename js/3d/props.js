@@ -1,39 +1,89 @@
 /* Prop factories: personalized store buildings, plaza dressing, mall
    storefronts, and the furniture meshes placed in the home/office rooms. */
+
+/* A capped triangular-prism gable roof: the flat triangular end faces the
+   street with no open back geometry to peek through at low angles (the
+   failure mode the old wide/shallow cone roof had). */
+function makeGableRoof(width, ridgeHeight, depth, color) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-width / 2, 0);
+  shape.lineTo(0, ridgeHeight);
+  shape.lineTo(width / 2, 0);
+  shape.lineTo(-width / 2, 0);
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 1 });
+  geo.translate(0, 0, -depth / 2);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.6 }));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+/* Two-story mixed-use storefront (shop below, a residential-feeling upper
+   floor above) with a cornice trim line, an awning over the door, and a
+   street-facing gable roof - aiming for the layered, multi-story rowhouse
+   look of a real shopping street rather than a single flat box. */
 function createBuilding({ width, height, depth, color, roofColor, label, icon }) {
   const group = new THREE.Group();
+  const groundH = height * 0.62;
+  const upperH = height - groundH;
 
   const wallMat = new THREE.MeshStandardMaterial({ map: makeBrickTexture(color), roughness: 0.85 });
-  const walls = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), wallMat);
-  walls.position.y = height / 2;
-  walls.castShadow = true;
-  walls.receiveShadow = true;
-  group.add(walls);
+  const ground = new THREE.Mesh(new THREE.BoxGeometry(width, groundH, depth), wallMat);
+  ground.position.y = groundH / 2;
+  ground.castShadow = true;
+  ground.receiveShadow = true;
+  group.add(ground);
 
-  const roofH = height * 0.6;
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(width, depth) * 0.6, roofH, 4), new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.6 }));
-  roof.position.y = height + roofH / 2;
-  roof.rotation.y = Math.PI / 4;
-  roof.castShadow = true;
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(width * 1.04, height * 0.05, depth * 1.04), new THREE.MeshStandardMaterial({ color: 0xf6ece0, roughness: 0.7 }));
+  trim.position.y = groundH + height * 0.025;
+  trim.castShadow = true;
+  group.add(trim);
+
+  const upperMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.25), roughness: 0.85 });
+  const upperW = width * 0.9, upperD = depth * 0.9;
+  const upper = new THREE.Mesh(new THREE.BoxGeometry(upperW, upperH, upperD), upperMat);
+  upper.position.y = groundH + height * 0.05 + upperH / 2;
+  upper.castShadow = true;
+  upper.receiveShadow = true;
+  group.add(upper);
+
+  const upperWinCount = width > 8 ? 4 : 2;
+  for (let i = 0; i < upperWinCount; i++) {
+    const wx = (i + 0.5) / upperWinCount * upperW - upperW / 2;
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(upperW * 0.14, upperH * 0.4), new THREE.MeshStandardMaterial({ color: 0xdff3ff, emissive: 0xaad9ff, emissiveIntensity: 0.35 }));
+    win.position.set(wx, groundH + height * 0.05 + upperH * 0.52, upperD / 2 + 0.02);
+    group.add(win);
+  }
+
+  const roofH = upperH * 1.15;
+  const roof = makeGableRoof(upperW * 1.06, roofH, upperD * 1.06, roofColor);
+  roof.position.y = groundH + height * 0.05 + upperH;
   group.add(roof);
 
   const doorW = width * 0.32;
-  const door = new THREE.Mesh(new THREE.BoxGeometry(doorW, height * 0.55, 0.08), new THREE.MeshStandardMaterial({ color: 0x3a2a20, roughness: 0.4 }));
-  door.position.set(0, height * 0.275, depth / 2 + 0.02);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(doorW, groundH * 0.85, 0.08), new THREE.MeshStandardMaterial({ color: 0x3a2a20, roughness: 0.4 }));
+  door.position.set(0, groundH * 0.425, depth / 2 + 0.02);
   group.add(door);
 
-  const glow = new THREE.Mesh(new THREE.PlaneGeometry(doorW * 0.85, height * 0.45), new THREE.MeshStandardMaterial({ color: 0xfff2c9, emissive: 0xffdd88, emissiveIntensity: 0.6 }));
-  glow.position.set(0, height * 0.28, depth / 2 + 0.06);
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(doorW * 0.85, groundH * 0.7), new THREE.MeshStandardMaterial({ color: 0xfff2c9, emissive: 0xffdd88, emissiveIntensity: 0.6 }));
+  glow.position.set(0, groundH * 0.44, depth / 2 + 0.06);
   group.add(glow);
 
   [-1, 1].forEach((side) => {
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.18, height * 0.28), new THREE.MeshStandardMaterial({ color: 0xbfe8ff, emissive: 0x88ccff, emissiveIntensity: 0.4 }));
-    win.position.set(side * width * 0.3, height * 0.62, depth / 2 + 0.02);
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.16, groundH * 0.42), new THREE.MeshStandardMaterial({ color: 0xbfe8ff, emissive: 0x88ccff, emissiveIntensity: 0.4 }));
+    win.position.set(side * width * 0.32, groundH * 0.5, depth / 2 + 0.02);
     group.add(win);
   });
 
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.95, height * 0.28), new THREE.MeshStandardMaterial({ map: makeSignTexture(label, icon, '#ffffff', '#2a2a3a') }));
-  sign.position.set(0, height * 0.92, depth / 2 + 0.03);
+  const awningMat = new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.6, side: THREE.DoubleSide });
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(doorW * 1.7, 0.06, 0.6), awningMat);
+  awning.position.set(0, groundH * 0.82, depth / 2 + 0.32);
+  awning.rotation.x = -0.28;
+  awning.castShadow = true;
+  group.add(awning);
+
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.95, groundH * 0.3), new THREE.MeshStandardMaterial({ map: makeSignTexture(label, icon, '#ffffff', '#2a2a3a') }));
+  sign.position.set(0, groundH * 0.95, depth / 2 + 0.03);
   group.add(sign);
 
   group.userData.footprint = { w: width, d: depth };
@@ -51,17 +101,28 @@ function createHouse({ label = 'Your Place' } = {}) {
   walls.castShadow = true; walls.receiveShadow = true;
   group.add(walls);
 
-  const roofH = height * 0.75;
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(width * 0.65, roofH, 4), new THREE.MeshStandardMaterial({ color: 0xc9536b, roughness: 0.6 }));
-  roof.position.y = height + roofH / 2;
-  roof.rotation.y = Math.PI / 4;
-  roof.castShadow = true;
+  const roofH = height * 0.7;
+  const roof = makeGableRoof(width * 1.08, roofH, depth * 1.08, 0xc9536b);
+  roof.position.y = height;
   group.add(roof);
 
   const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1, 0.4), new THREE.MeshStandardMaterial({ color: 0x8a6a55 }));
-  chimney.position.set(width * 0.25, height + 1.1, 0);
+  chimney.position.set(width * 0.25, height + roofH * 0.6, 0);
   chimney.castShadow = true;
   group.add(chimney);
+
+  const balconyFloor = new THREE.Mesh(new THREE.BoxGeometry(width * 0.4, 0.06, 0.5), new THREE.MeshStandardMaterial({ color: 0xf6ece0 }));
+  balconyFloor.position.set(0, height * 0.62, depth / 2 + 0.25);
+  balconyFloor.castShadow = true;
+  group.add(balconyFloor);
+  for (let i = -3; i <= 3; i++) {
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.3, 6), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+    rail.position.set(i * (width * 0.4) / 7, height * 0.62 + 0.15, depth / 2 + 0.47);
+    group.add(rail);
+  }
+  const balconyWindow = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.32, height * 0.28), new THREE.MeshStandardMaterial({ color: 0xdff3ff, emissive: 0xaad9ff, emissiveIntensity: 0.35 }));
+  balconyWindow.position.set(0, height * 0.78, depth / 2 + 0.02);
+  group.add(balconyWindow);
 
   const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2, 0.08), new THREE.MeshStandardMaterial({ color: 0x7a4a30 }));
   door.position.set(0, 1, depth / 2 + 0.02);
@@ -166,6 +227,11 @@ function createStorefront({ width, depth, label, icon, color }) {
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.9, 0.55), new THREE.MeshStandardMaterial({ map: makeSignTexture(label, icon, color, '#ffffff') }));
   sign.position.set(0, 2.15, depth + 0.03);
   group.add(sign);
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(width * 0.95, 0.05, 0.5), new THREE.MeshStandardMaterial({ color, roughness: 0.6, side: THREE.DoubleSide }));
+  awning.position.set(0, 2.5, depth + 0.3);
+  awning.rotation.x = -0.3;
+  awning.castShadow = true;
+  group.add(awning);
   group.userData.footprint = { w: width, d: depth + 1 };
   group.userData.doorFront = { x: 0, z: 2.2 };
   group.userData.label = label;
@@ -242,4 +308,118 @@ function createFurnitureMesh(item) {
 
   group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return group;
+}
+
+/* ---------- Store-interior product displays: walk up to one, a buy/try-on
+   popup appears. Each returns a group plus userData.signAnchor (local
+   offset for the floating name/price sign world3d.js hangs above it). */
+function createPedestal(radius = 0.32, height = 0.45, color = 0xf2eee6) {
+  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 1.08, height, 16), new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
+  pedestal.position.y = height / 2;
+  pedestal.castShadow = true;
+  pedestal.receiveShadow = true;
+  return pedestal;
+}
+
+function createMannequinDisplay(item) {
+  const group = new THREE.Group();
+  const pedestal = createPedestal(0.34, 0.4);
+  group.add(pedestal);
+  const mat = new THREE.MeshStandardMaterial({ color: item.color, roughness: 0.6 });
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8cfa8, roughness: 0.4 });
+  const torsoGeo = typeof THREE.CapsuleGeometry === 'function'
+    ? new THREE.CapsuleGeometry(0.22, 0.5, 4, 12)
+    : new THREE.CylinderGeometry(0.22, 0.2, 0.7, 12);
+  const torso = new THREE.Mesh(torsoGeo, mat);
+  torso.position.y = 0.4 + 0.5;
+  torso.castShadow = true;
+  group.add(torso);
+  const neckKnob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), bodyMat);
+  neckKnob.position.y = 0.4 + 0.9;
+  group.add(neckKnob);
+  [-1, 1].forEach((side) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.35, 8), bodyMat);
+    leg.position.set(side * 0.11, 0.4 + 0.18, 0);
+    leg.castShadow = true;
+    group.add(leg);
+  });
+  group.userData.signAnchor = { x: 0, y: 1.55, z: 0 };
+  return group;
+}
+
+function createShoeDisplay(item) {
+  const group = new THREE.Group();
+  const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.34), new THREE.MeshStandardMaterial({ color: 0xf2eee6, roughness: 0.5 }));
+  shelf.position.y = 0.42;
+  shelf.castShadow = true; shelf.receiveShadow = true;
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.42, 10), new THREE.MeshStandardMaterial({ color: 0xf2eee6 }));
+  pole.position.y = 0.21;
+  group.add(shelf, pole);
+  const mat = new THREE.MeshStandardMaterial({ color: item.color, roughness: 0.55 });
+  [-0.1, 0.1].forEach((x) => {
+    const sole = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.12), mat);
+    sole.position.set(x, 0.48, 0);
+    const heel = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.1), mat);
+    heel.position.set(x - 0.05, 0.55, 0.01);
+    sole.castShadow = heel.castShadow = true;
+    group.add(sole, heel);
+  });
+  group.userData.signAnchor = { x: 0, y: 1.05, z: 0 };
+  return group;
+}
+
+function createJewelryDisplay(item) {
+  const group = new THREE.Group();
+  group.add(createPedestal(0.26, 0.55));
+  const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.05, 0.35, 8), new THREE.MeshStandardMaterial({ color: 0x2a2a2a }));
+  stand.position.y = 0.55 + 0.17;
+  group.add(stand);
+  const gemMat = new THREE.MeshStandardMaterial({ color: item.color, roughness: 0.15, metalness: 0.6 });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.025, 10, 20), gemMat);
+  ring.position.y = 0.55 + 0.36;
+  ring.rotation.x = Math.PI / 2;
+  ring.castShadow = true;
+  group.add(ring);
+  const sparkle = new THREE.PointLight(item.color, 0.5, 1.2);
+  sparkle.position.copy(ring.position);
+  group.add(sparkle);
+  group.userData.signAnchor = { x: 0, y: 1.15, z: 0 };
+  return group;
+}
+
+function createPetDisplay(item) {
+  const group = new THREE.Group();
+  const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.28, 0.18, 16), new THREE.MeshStandardMaterial({ color: 0xd9b06b, roughness: 0.8 }));
+  basket.position.y = 0.09;
+  basket.castShadow = true; basket.receiveShadow = true;
+  group.add(basket);
+  const mat = new THREE.MeshStandardMaterial({ color: item.color, roughness: 0.7 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), mat);
+  body.position.y = 0.35;
+  body.scale.set(1, 0.85, 1.15);
+  body.castShadow = true;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), mat);
+  head.position.set(0, 0.42, 0.22);
+  head.castShadow = true;
+  group.add(body, head);
+  [-0.08, 0.08].forEach((x) => {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.1, 8), mat);
+    ear.position.set(x, 0.52, 0.24);
+    group.add(ear);
+  });
+  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), mat);
+  tail.position.set(0, 0.4, -0.22);
+  group.add(tail);
+  group.userData.signAnchor = { x: 0, y: 0.95, z: 0 };
+  return group;
+}
+
+function createItemDisplay(category, item) {
+  if (category === 'outfits') return createMannequinDisplay(item);
+  if (category === 'shoes') return createShoeDisplay(item);
+  if (category === 'jewelry') return createJewelryDisplay(item);
+  if (category === 'pets') return createPetDisplay(item);
+  const mesh = createFurnitureMesh(item);
+  mesh.userData.signAnchor = { x: 0, y: 1.1, z: 0 };
+  return mesh;
 }

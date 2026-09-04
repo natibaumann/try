@@ -168,6 +168,9 @@ h3 { margin: 14px 0 8px; color: var(--purple); font-size: 15px; }
 .sticker-btn { font-size: 20px; background: #fff; border: 2px solid var(--teal); border-radius: 8px; padding: 4px 8px; }
 #poster-text { width: 100%; padding: 8px; border-radius: 8px; border: 2px solid var(--teal); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.item-popup { max-width: 300px; text-align: center; }
+.item-swatch-lg { width: 100%; height: 90px; border-radius: 10px; margin-bottom: 12px; }
+.item-popup h2 { margin: 4px 0; font-size: 18px; }
 
 /* ---------- Home / Decorate ---------- */
 .home-layout { display: flex; gap: 16px; flex: 1; padding: 16px 20px; min-height: 0; }

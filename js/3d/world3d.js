@@ -28,8 +28,8 @@ function createWorld3DScreen(sceneKey) {
   return {
     sceneKey,
 
-    mount(root) {
-      const built = SCENE_BUILDERS[this.sceneKey]();
+    mount(root, params) {
+      const built = this.sceneKey === 'store' ? buildStoreScene(params.storeId) : SCENE_BUILDERS[this.sceneKey]();
       this.built = built;
       this.scene = built.scene;
 
@@ -61,7 +61,7 @@ function createWorld3DScreen(sceneKey) {
 
       this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
 
-      const start = this.lastPosition || built.spawn;
+      const start = (this.sceneKey !== 'store' && this.lastPosition) || built.spawn;
       this.character = createCharacter(GameState.data.appearance);
       this.character.root.position.set(start.x, 0, start.z);
       this.character.root.rotation.y = start.yaw;
@@ -139,7 +139,11 @@ function createWorld3DScreen(sceneKey) {
       const hasInput = dir.lengthSq() > 0;
       if (hasInput) dir.normalize();
 
-      const maxSpeed = 3.4, accel = 20, friction = 12;
+      /* Tuned for snappy, arcade-style response rather than realistic
+         inertia: input reaches top speed almost immediately, stops
+         crisply, and the character/camera turn to match quickly instead
+         of feeling like they're sliding on ice. */
+      const maxSpeed = 4.4, accel = 40, friction = 24;
       if (hasInput) {
         this.velocity.x += dir.x * accel * dt;
         this.velocity.z += dir.z * accel * dt;
@@ -157,10 +161,10 @@ function createWorld3DScreen(sceneKey) {
       pos.z += this.velocity.z * dt;
       this.resolveCollision(pos, 0.4);
 
-      const moving = this.velocity.length() > 0.15;
+      const moving = this.velocity.length() > 0.1;
       if (moving) {
         const targetYaw = Math.atan2(-this.velocity.x, -this.velocity.z);
-        this.yaw = shortestAngleLerp(this.yaw, targetYaw, Math.min(1, dt * 10));
+        this.yaw = shortestAngleLerp(this.yaw, targetYaw, Math.min(1, dt * 18));
         this.character.root.rotation.y = this.yaw;
       }
       this.character.animate(dt, distanceMoved, moving);
@@ -168,8 +172,8 @@ function createWorld3DScreen(sceneKey) {
       const back = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
       const desiredCamPos = new THREE.Vector3(pos.x, 0, pos.z).addScaledVector(back, 5.2).add(new THREE.Vector3(0, 2.6, 0));
       const desiredLook = new THREE.Vector3(pos.x, 1.4, pos.z);
-      this.camPos.lerp(desiredCamPos, Math.min(1, dt * 4));
-      this.camLook.lerp(desiredLook, Math.min(1, dt * 6));
+      this.camPos.lerp(desiredCamPos, Math.min(1, dt * 8));
+      this.camLook.lerp(desiredLook, Math.min(1, dt * 12));
       this.camera.position.copy(this.camPos);
       this.camera.lookAt(this.camLook);
 
@@ -214,12 +218,16 @@ function createWorld3DScreen(sceneKey) {
         MissionsScreen.open();
         return;
       }
+      if (action.type === 'item') {
+        ItemPopup.open(action.item, action.category, () => this.refreshHUDCash());
+        return;
+      }
       const pos = this.character.root.position;
       this.lastPosition = { x: pos.x, z: pos.z, yaw: this.yaw };
       if (action.type === 'goto') {
         Router.goto(action.target === 'mall' ? MallScreen : PlazaScreen, {}, 1100);
       } else if (action.type === 'store') {
-        Router.goto(StoreScreen, { storeId: action.target }, 900);
+        Router.goto(StoreScreen3D, { storeId: action.target }, 900);
       } else if (action.type === 'salon') {
         Router.goto(SalonScreen, {}, 900);
       } else if (action.type === 'home') {
@@ -239,6 +247,10 @@ function createWorld3DScreen(sceneKey) {
       } else {
         alert(`Clue found! (${mission.cluesFound.length}/${def.clueIds.length})`);
       }
+      this.refreshHUDCash();
+    },
+
+    refreshHUDCash() {
       const cashEl = document.querySelector('.world-screen .hud-cash');
       if (cashEl) cashEl.textContent = `💰 $${GameState.data.cash}`;
     },
@@ -256,3 +268,4 @@ function createWorld3DScreen(sceneKey) {
 
 const PlazaScreen = createWorld3DScreen('plaza');
 const MallScreen = createWorld3DScreen('mall');
+const StoreScreen3D = createWorld3DScreen('store');

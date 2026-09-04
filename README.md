@@ -1,6 +1,6 @@
 # Style Squad: Plaza Life
 
-A browser-based, 2000s-Bratz-inspired girls' dress-up & life-sim game, rendered
+A browser-based, 2000's inspired girls' dress-up & life-sim game, rendered
 in real 3D with [three.js](https://threejs.org/) (vendored locally at
 `lib/three.min.js`, no CDN dependency). No external character/building
 assets — every character, building, and piece of furniture is procedural

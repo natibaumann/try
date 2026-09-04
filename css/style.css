@@ -171,6 +171,20 @@ h3 { margin: 14px 0 8px; color: var(--purple); font-size: 15px; }
 .item-popup { max-width: 300px; text-align: center; }
 .item-swatch-lg { width: 100%; height: 90px; border-radius: 10px; margin-bottom: 12px; }
 .item-popup h2 { margin: 4px 0; font-size: 18px; }
+.item-popup-wearable {
+  max-width: 460px; width: 90%; display: flex; gap: 16px; text-align: left; align-items: stretch;
+}
+.item-preview-3d {
+  flex: 0 0 170px;
+  background: linear-gradient(180deg, #ffe6f2, #fff);
+  border-radius: 12px;
+  border: 3px solid var(--pink);
+  overflow: hidden;
+}
+.item-preview-3d canvas { width: 100%; height: 100%; display: block; }
+.item-popup-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.item-popup-info h2 { margin: 4px 0; font-size: 18px; }
+.item-popup-info .modal-actions { margin-top: auto; }
 
 /* ---------- Home / Decorate ---------- */
 .home-layout { display: flex; gap: 16px; flex: 1; padding: 16px 20px; min-height: 0; }
@@ -179,3 +193,14 @@ h3 { margin: 14px 0 8px; color: var(--purple); font-size: 15px; }
 .home-viewport canvas { width: 100%; height: 100%; display: block; touch-action: none; }
 .home-inventory { flex: 0 0 220px; overflow-y: auto; }
 .furniture-list { padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.placement-controls {
+  background: #fff0f6; border: 2px solid var(--hot-pink); border-radius: 12px;
+  padding: 10px 12px; margin-bottom: 14px;
+}
+.placement-controls p { margin: 0 0 8px; font-size: 13px; }
+.placement-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.placement-actions button {
+  flex: 1 1 auto; border: 2px solid var(--purple); background: #fff; border-radius: 999px;
+  padding: 6px 10px; font-weight: 600; font-size: 13px; color: var(--dark);
+}
+.placement-actions #home-remove-btn { border-color: #d1477a; color: #d1477a; }

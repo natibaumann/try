@@ -1,15 +1,18 @@
 /* The player's hub: an apartment and an office, both real 3D rooms
-   decorated with furniture bought from the furniture stores. Click a piece
-   in the side list, then click a floor tile to place its 3D model; drag to
-   orbit the room, scroll to zoom, click a placed piece to remove it. */
-const HOME_GRID_COLS = 5;
-const HOME_GRID_ROWS = 4;
-const HOME_TILE = 1.3;
+   decorated with furniture bought from the furniture stores. Select a piece
+   from the side list, then click anywhere on the floor to drop it right
+   there - no grid snapping. Click a placed piece to select it and a small
+   panel appears with Rotate/Remove controls. Drag to orbit the room, scroll
+   to zoom. */
+const HOME_ROOM_W = 6.5;
+const HOME_ROOM_D = 5.2;
+const HOME_PLACE_MARGIN = 0.45;
 
 const HomeScreen = {
   mount(root) {
     this.room = 'apartment';
     this.selectedFurniture = null;
+    this.selectedPlacementId = null;
     root.innerHTML = `
       <div class="screen home-screen">
         <div class="panel-header">
@@ -25,8 +28,16 @@ const HomeScreen = {
         <div class="home-layout">
           <div class="home-viewport" id="home-viewport"></div>
           <div class="home-inventory">
+            <div class="placement-controls" id="placement-controls" hidden>
+              <p>Selected: <strong id="placement-name"></strong></p>
+              <div class="placement-actions">
+                <button id="home-rotate-btn">⟳ Rotate</button>
+                <button id="home-remove-btn">🗑 Remove</button>
+                <button id="home-deselect-btn">Done</button>
+              </div>
+            </div>
             <h3>Your Furniture</h3>
-            <p class="hint">Select a piece, then click an empty tile to place it. Click a placed piece to remove it. Drag to look around.</p>
+            <p class="hint">Select a piece, then click anywhere on the floor to place it. Click a placed piece to select it, rotate, or remove it. Drag to look around.</p>
             <div class="furniture-list" id="furniture-list"></div>
           </div>
         </div>
@@ -39,10 +50,16 @@ const HomeScreen = {
         btn.classList.add('active');
         this.room = btn.dataset.room;
         this.selectedFurniture = null;
+        this.selectPlacement(null);
         this.rebuildFurniture();
         this.renderInventory();
       });
     });
+
+    this.controls = root.querySelector('#placement-controls');
+    this.controls.querySelector('#home-rotate-btn').addEventListener('click', () => this.rotateSelected());
+    this.controls.querySelector('#home-remove-btn').addEventListener('click', () => this.removeSelected());
+    this.controls.querySelector('#home-deselect-btn').addEventListener('click', () => this.selectPlacement(null));
 
     this.viewport = root.querySelector('#home-viewport');
     this.list = root.querySelector('#furniture-list');
@@ -67,7 +84,8 @@ const HomeScreen = {
     scene.background = new THREE.Color(0xfbeef5);
     this.scene = scene;
 
-    const roomW = HOME_GRID_COLS * HOME_TILE, roomD = HOME_GRID_ROWS * HOME_TILE, wallH = 2.7;
+    const roomW = HOME_ROOM_W, roomD = HOME_ROOM_D, wallH = 2.7;
+    this.roomW = roomW; this.roomD = roomD;
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0xe8d0c0, 0.6));
     const key = new THREE.DirectionalLight(0xfff2e0, 1);
@@ -87,7 +105,7 @@ const HomeScreen = {
       ctx.strokeRect(2, 2, w - 4, h - 4);
     }, 128, 128);
     floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
-    floorTex.repeat.set(HOME_GRID_COLS, HOME_GRID_ROWS);
+    floorTex.repeat.set(HOME_ROOM_W / 1.3, HOME_ROOM_D / 1.3);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.9 }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -108,7 +126,14 @@ const HomeScreen = {
     window1.position.set(roomW * 0.2, wallH * 0.6, -roomD / 2 + 0.08);
     scene.add(window1);
 
-    this.roomW = roomW; this.roomD = roomD;
+    this.selectionRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.5, 0.62, 32),
+      new THREE.MeshBasicMaterial({ color: 0xff4fa3, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    this.selectionRing.rotation.x = -Math.PI / 2;
+    this.selectionRing.position.y = 0.015;
+    this.selectionRing.visible = false;
+    scene.add(this.selectionRing);
 
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 60);
     this.camera = camera;
@@ -149,18 +174,6 @@ const HomeScreen = {
     window.addEventListener('resize', this.onResize);
     this.resize();
 
-    this.tileMeshes = [];
-    const tileGeo = new THREE.PlaneGeometry(HOME_TILE * 0.94, HOME_TILE * 0.94);
-    for (let i = 0; i < HOME_GRID_COLS * HOME_GRID_ROWS; i++) {
-      const col = i % HOME_GRID_COLS, row = Math.floor(i / HOME_GRID_COLS);
-      const tile = new THREE.Mesh(tileGeo, new THREE.MeshBasicMaterial({ visible: false }));
-      tile.rotation.x = -Math.PI / 2;
-      tile.position.set(-roomW / 2 + HOME_TILE * (col + 0.5), 0.01, -roomD / 2 + HOME_TILE * (row + 0.5));
-      tile.userData.index = i;
-      scene.add(tile);
-      this.tileMeshes.push(tile);
-    }
-
     this.furnitureMeshes = {};
     this.raycaster = new THREE.Raycaster();
   },
@@ -183,29 +196,38 @@ const HomeScreen = {
     this.camera.updateProjectionMatrix();
   },
 
-  tilePosition(index) {
-    const col = index % HOME_GRID_COLS, row = Math.floor(index / HOME_GRID_COLS);
-    return { x: -this.roomW / 2 + HOME_TILE * (col + 0.5), z: -this.roomD / 2 + HOME_TILE * (row + 0.5) };
-  },
-
   rebuildFurniture() {
     Object.values(this.furnitureMeshes).forEach((mesh) => { this.scene.remove(mesh); disposeObject(mesh); });
     this.furnitureMeshes = {};
-    const layout = GameState.data.home[this.room];
-    Object.keys(layout).forEach((idxStr) => {
-      this.placeMesh(parseInt(idxStr, 10), layout[idxStr]);
-    });
+    GameState.data.home[this.room].forEach((record) => this.placeMesh(record));
   },
 
-  placeMesh(index, furnitureId) {
-    const item = findItem('furniture', furnitureId);
+  placeMesh(record) {
+    const item = findItem('furniture', record.furnitureId);
     if (!item) return;
     const mesh = createFurnitureMesh(item);
-    const pos = this.tilePosition(index);
-    mesh.position.set(pos.x, 0, pos.z);
-    mesh.rotation.y = Math.PI * 0.15;
+    mesh.position.set(record.x, 0, record.z);
+    mesh.rotation.y = record.rotation;
+    mesh.userData.placementId = record.id;
     this.scene.add(mesh);
-    this.furnitureMeshes[index] = mesh;
+    this.furnitureMeshes[record.id] = mesh;
+  },
+
+  clampToFloor(x, z) {
+    const hw = this.roomW / 2 - HOME_PLACE_MARGIN, hd = this.roomD / 2 - HOME_PLACE_MARGIN;
+    return { x: Math.max(-hw, Math.min(hw, x)), z: Math.max(-hd, Math.min(hd, z)) };
+  },
+
+  placeNew(furnitureId, x, z) {
+    const p = this.clampToFloor(x, z);
+    const record = {
+      id: `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+      furnitureId, x: p.x, z: p.z, rotation: 0,
+    };
+    GameState.data.home[this.room].push(record);
+    GameState.save();
+    this.placeMesh(record);
+    this.selectPlacement(record.id);
   },
 
   handleClick(e) {
@@ -215,21 +237,71 @@ const HomeScreen = {
       -((e.clientY - rect.top) / rect.height) * 2 + 1,
     );
     this.raycaster.setFromCamera(mouse, this.camera);
-    const hits = this.raycaster.intersectObjects(this.tileMeshes);
-    if (!hits.length) return;
-    const index = hits[0].object.userData.index;
-    const layout = GameState.data.home[this.room];
-    if (layout[index]) {
-      this.scene.remove(this.furnitureMeshes[index]);
-      disposeObject(this.furnitureMeshes[index]);
-      delete this.furnitureMeshes[index];
-      delete layout[index];
-      GameState.save();
-    } else if (this.selectedFurniture) {
-      layout[index] = this.selectedFurniture;
-      GameState.save();
-      this.placeMesh(index, this.selectedFurniture);
+
+    const furnitureHits = this.raycaster.intersectObjects(Object.values(this.furnitureMeshes), true);
+    if (furnitureHits.length) {
+      let obj = furnitureHits[0].object;
+      while (obj && obj.userData.placementId === undefined) obj = obj.parent;
+      if (obj) {
+        this.selectPlacement(obj.userData.placementId);
+        return;
+      }
     }
+
+    const floorHits = this.raycaster.intersectObject(this.floor);
+    if (!floorHits.length) return;
+    if (this.selectedFurniture) {
+      this.placeNew(this.selectedFurniture, floorHits[0].point.x, floorHits[0].point.z);
+    } else {
+      this.selectPlacement(null);
+    }
+  },
+
+  selectPlacement(id) {
+    this.selectedPlacementId = id;
+    const mesh = id ? this.furnitureMeshes[id] : null;
+    if (mesh) {
+      this.selectionRing.visible = true;
+      this.selectionRing.position.set(mesh.position.x, 0.015, mesh.position.z);
+    } else {
+      this.selectionRing.visible = false;
+    }
+    this.renderPlacementControls();
+  },
+
+  renderPlacementControls() {
+    const record = this.selectedPlacementId && GameState.data.home[this.room].find((r) => r.id === this.selectedPlacementId);
+    if (!record) {
+      this.controls.hidden = true;
+      return;
+    }
+    const item = findItem('furniture', record.furnitureId);
+    this.controls.hidden = false;
+    this.controls.querySelector('#placement-name').textContent = item ? item.name : record.furnitureId;
+  },
+
+  rotateSelected() {
+    const record = GameState.data.home[this.room].find((r) => r.id === this.selectedPlacementId);
+    if (!record) return;
+    record.rotation = (record.rotation + Math.PI / 4) % (Math.PI * 2);
+    GameState.save();
+    const mesh = this.furnitureMeshes[record.id];
+    if (mesh) mesh.rotation.y = record.rotation;
+  },
+
+  removeSelected() {
+    const layout = GameState.data.home[this.room];
+    const idx = layout.findIndex((r) => r.id === this.selectedPlacementId);
+    if (idx === -1) return;
+    layout.splice(idx, 1);
+    GameState.save();
+    const mesh = this.furnitureMeshes[this.selectedPlacementId];
+    if (mesh) {
+      this.scene.remove(mesh);
+      disposeObject(mesh);
+      delete this.furnitureMeshes[this.selectedPlacementId];
+    }
+    this.selectPlacement(null);
   },
 
   renderInventory() {
@@ -244,6 +316,7 @@ const HomeScreen = {
     this.list.querySelectorAll('[data-furniture]').forEach((btn) => {
       btn.addEventListener('click', () => {
         this.selectedFurniture = this.selectedFurniture === btn.dataset.furniture ? null : btn.dataset.furniture;
+        if (this.selectedFurniture) this.selectPlacement(null);
         this.renderInventory();
       });
     });

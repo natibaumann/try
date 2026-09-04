@@ -9,9 +9,9 @@ function makeGableRoof(width, ridgeHeight, depth, color) {
   shape.moveTo(-width / 2, 0);
   shape.lineTo(0, ridgeHeight);
   shape.lineTo(width / 2, 0);
-  shape.lineTo(-width / 2, 0);
   const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 1 });
   geo.translate(0, 0, -depth / 2);
+  geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.6 }));
   mesh.castShadow = true;
   mesh.receiveShadow = true;

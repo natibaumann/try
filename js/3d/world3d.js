@@ -59,7 +59,10 @@ function createWorld3DScreen(sceneKey) {
       this.renderer.toneMappingExposure = 1.05;
       this.viewport.appendChild(this.renderer.domElement);
 
-      this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
+      /* Far plane must clear the sky dome's radius (see scenes.js addSky)
+         with real margin - sitting exactly at it caused depth-precision
+         clipping artifacts on the dome right at the horizon. */
+      this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 260);
 
       const start = (this.sceneKey !== 'store' && this.lastPosition) || built.spawn;
       this.character = createCharacter(GameState.data.appearance);
@@ -131,13 +134,21 @@ function createWorld3DScreen(sceneKey) {
         return;
       }
 
+      /* Raw key input is expressed relative to where the character is
+         CURRENTLY facing (== where the chase camera is currently looking),
+         not fixed world axes - otherwise "forward" stops meaning "away
+         from camera" the instant the character has turned to face any
+         direction other than -Z, and every direction change reframes the
+         shot out from under the player. */
+      const forwardAmount = (this.keys['arrowup'] || this.keys['w'] ? 1 : 0) - (this.keys['arrowdown'] || this.keys['s'] ? 1 : 0);
+      const rightAmount = (this.keys['arrowright'] || this.keys['d'] ? 1 : 0) - (this.keys['arrowleft'] || this.keys['a'] ? 1 : 0);
+      const hasInput = forwardAmount !== 0 || rightAmount !== 0;
       const dir = new THREE.Vector3();
-      if (this.keys['arrowup'] || this.keys['w']) dir.z -= 1;
-      if (this.keys['arrowdown'] || this.keys['s']) dir.z += 1;
-      if (this.keys['arrowleft'] || this.keys['a']) dir.x -= 1;
-      if (this.keys['arrowright'] || this.keys['d']) dir.x += 1;
-      const hasInput = dir.lengthSq() > 0;
-      if (hasInput) dir.normalize();
+      if (hasInput) {
+        const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+        const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+        dir.addScaledVector(forward, forwardAmount).addScaledVector(right, rightAmount).normalize();
+      }
 
       /* Tuned for snappy, arcade-style response rather than realistic
          inertia: input reaches top speed almost immediately, stops

@@ -18,15 +18,24 @@ function addHotspot(list, colliders, mesh, id, label, action) {
   }
 }
 
-function addSky(scene, top, bottom) {
-  const geo = new THREE.SphereGeometry(200, 16, 16);
-  const mat = new THREE.ShaderMaterial({
-    uniforms: { top: { value: new THREE.Color(top) }, bottom: { value: new THREE.Color(bottom) } },
-    vertexShader: 'varying vec3 vPos; void main() { vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'uniform vec3 top; uniform vec3 bottom; varying vec3 vPos; void main() { float h = normalize(vPos).y * 0.5 + 0.5; gl_FragColor = vec4(mix(bottom, top, h), 1.0); }',
-    side: THREE.BackSide,
-    depthWrite: false,
-  });
+/* A vertex-colored (not custom-shader) sky dome: plain MeshBasicMaterial +
+   per-vertex colors is a much better-trodden rendering path than a
+   hand-written ShaderMaterial, which turned out to rasterize a stray dark
+   patch near the horizon on at least one WebGL backend. */
+function addSky(scene, topColor, bottomColor) {
+  const radius = 200;
+  const geo = new THREE.SphereGeometry(radius, 32, 32);
+  const top = new THREE.Color(topColor), bottom = new THREE.Color(bottomColor);
+  const posAttr = geo.attributes.position;
+  const colors = new Float32Array(posAttr.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < posAttr.count; i++) {
+    const h = THREE.MathUtils.clamp(posAttr.getY(i) / radius * 0.5 + 0.5, 0, 1);
+    c.copy(bottom).lerp(top, h);
+    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, depthWrite: false, fog: false });
   scene.add(new THREE.Mesh(geo, mat));
 }
 
@@ -68,8 +77,8 @@ function buildPlazaScene() {
   const storeSpecs = [
     { id: 'plaza_pets', x: -25, z: -10.5, rot: 0.26, color: 0x6fae5c, roof: 0x3f7a34, label: 'Plaza Pets', icon: '🐾', target: 'plaza_pets' },
     { id: 'plaza_shoes', x: -16.5, z: -12.5, rot: 0, color: 0xd9556b, roof: 0x8a2f3f, label: 'Plaza Shoes', icon: '👠', target: 'plaza_shoes' },
-    { id: 'plaza_clothes', x: -8, z: -11, rot: 0, color: 0x4a72b0, roof: 0x2a4a7a, label: 'Plaza Threads', icon: '👗', target: 'plaza_clothes' },
-    { id: 'plaza_salon', x: 8, z: -11, rot: 0, color: 0xe0a04f, roof: 0xa06a2a, label: 'Plaza Salon', icon: '💇', target: null },
+    { id: 'plaza_clothes', x: -9.5, z: -11, rot: 0, color: 0x4a72b0, roof: 0x2a4a7a, label: 'Plaza Threads', icon: '👗', target: 'plaza_clothes' },
+    { id: 'plaza_salon', x: 9.5, z: -11, rot: 0, color: 0xe0a04f, roof: 0xa06a2a, label: 'Plaza Salon', icon: '💇', target: null },
     { id: 'plaza_jewelry', x: 16.5, z: -12.5, rot: 0, color: 0x6fc2c9, roof: 0x2f7a80, label: 'Plaza Gems', icon: '💎', target: 'plaza_jewelry' },
     { id: 'plaza_furniture', x: 25, z: -10.5, rot: -0.26, color: 0xb98a5a, roof: 0x7a5530, label: 'Plaza Home Goods', icon: '🛋️', target: 'plaza_furniture' },
   ];
@@ -86,7 +95,7 @@ function buildPlazaScene() {
     addHotspot(hotspots, colliders, b, s.id, s.label, action);
   });
 
-  const mall = createBuilding({ width: 13, height: 7, depth: 7.5, color: 0xa04fd9, roofColor: 0x6a2f8a, label: 'Grand Mall', icon: '🏬' });
+  const mall = createBuilding({ width: 12, height: 7, depth: 7.5, color: 0xa04fd9, roofColor: 0x6a2f8a, label: 'Grand Mall', icon: '🏬' });
   mall.position.set(0, 0, -13);
   scene.add(mall);
   addHotspot(hotspots, colliders, mall, 'mall_entrance', 'Mall Entrance', { type: 'goto', target: 'mall' });

@@ -1,7 +1,11 @@
 /* Global game state + persistence.
    Everything the game needs to remember lives here and is
    flushed to localStorage on every change so a reload resumes the save. */
-const SAVE_KEY = 'bratzGameSave_v1';
+/* v2: home.apartment/office moved from a {tileIndex: furnitureId} grid map to
+   an array of freely-placed {id, furnitureId, x, z, rotation} records - the
+   key bump means any old grid-shaped save is simply ignored in favor of a
+   fresh default rather than migrated. */
+const SAVE_KEY = 'bratzGameSave_v2';
 
 function defaultState() {
   return {
@@ -29,8 +33,8 @@ function defaultState() {
     cash: 500,
     location: 'plaza',
     home: {
-      apartment: {}, // tileIndex -> furnitureId
-      office: {},
+      apartment: [], // array of {id, furnitureId, x, z, rotation}
+      office: [],
     },
     missions: {
       spy_assignment: { status: 'available', cluesFound: [] },
